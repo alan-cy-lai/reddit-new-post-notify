@@ -16,7 +16,7 @@ reddit-new-post-notify-pushover:
         - UPDATE_INTERVAL=60
         - SUBREDDIT=aww
     volumes:
-        - $HOME/script.py:/usr/src/script.py
+        - $HOME/notifier.py:/usr/src/script.py
 
     command: python -u /usr/src/script.py
     restart: always
