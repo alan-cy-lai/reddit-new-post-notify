@@ -18,29 +18,52 @@
 #    specific language governing permissions and limitations under the License.
 #
 #
-
 import urllib.request
+import http.client, os
+import json
 import re
 import time
 
-sub = "funny"       # Which sub to check
-delay = 120         # How often to do check (in seconds)
+sub = os.getenv('SUBREDDIT')       # Which sub to check
+delay = int(os.getenv('UPDATE_INTERVAL'))         # How often to do check (in seconds)
 
 # Function defining what to do when there is a new post
-def on_new_post(post_name, post_time_utc):
-    print("New post!")
-    print(post_name)
+def on_new_post(postDataJson, post_time_utc):
+    message = postDataJson['title'] + "\n" + postDataJson['url']
+    conn = http.client.HTTPSConnection("api.pushover.net:443")
+    conn.request("POST", "/1/messages.json",
+    urllib.parse.urlencode({
+        "token": os.getenv('PUSHOVER_TOKEN'),
+        "user": os.getenv('PUSHOVER_USER_KEY'),
+        "message": message,
+    }), { "Content-type": "application/x-www-form-urlencoded" })
+    conn.getresponse()
 
-### There is not need to touch anything below this point for standard usage ###
-url = "http://www.reddit.com/r/"+sub+"/new.json?sort=new"
+url = "https://www.reddit.com/r/"+sub+"/new.json?sort=new"
 lastPost = 0
 req = urllib.request.Request(url, headers={"User-Agent": "reddit-new-post-notifier"})
 while True:
-    data = urllib.request.urlopen(req)
-    pattern = re.compile("\"title\": \"(?P<Name>[^\"]*)\".*\"created_utc\": (?P<Time>[0-9]+)")
-    match = pattern.search(str(data.read()))
-    if int(match.group("Time")) > lastPost:
-        lastPost = int(match.group("Time"))
-        on_new_post(match.group("Name"), lastPost)
+    response = urllib.request.urlopen(req)
+    parsedJson = json.loads(response.read())
+    latestPost = lastPost
+    for post in parsedJson['data']['children']:
+        timeStr = str(post['data']['created_utc'])
+        timeInt = int(post['data']['created_utc'])
+        title = post['data']['title']
+        url = post['data']['url']
+        if latestPost == 0:
+            latestPost = timeInt
+            print("First run! Assigning last post time to: " + timeStr)
+            print("Skipping loop")
+            break
+        if timeInt > lastPost:
+            print("Sending post " + title)
+            on_new_post(post['data'], timeInt)
+            if timeInt > latestPost:
+                latestPost = timeInt
+    if latestPost != lastPost:
+        print("Setting lastPost to " + str(latestPost))
+    lastPost = latestPost
     time.sleep(delay)
+
 
